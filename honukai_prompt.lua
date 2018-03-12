@@ -38,6 +38,7 @@ end
  -- @param  {string} path    Path to directory will be checked. If not provided
  --                          current directory will be used
  -- @param  {string} dirname Directory name to search for
+ --
  -- @return {string} Path to specified directory or nil if such dir not found
 local function get_dir_contains(path, dirname)
 
@@ -126,20 +127,57 @@ local function get_git_dir(path)
 end
 
 ---
- -- Get the status of working dir
+ -- Get current branch
+ -- @return {false | branch name}
+---
+local function get_git_branch()
+    local file = io.popen("git branch 2>nul")
+    for line in file:lines() do
+        local branch = line:match("%* (.+)$")
+        if branch then
+            file:close()
+            return branch
+        end
+    end
+
+    file:close()
+    return false
+end
+
+---
+ -- Get the status of working dir. From https://gist.github.com/jonasem/e8b3a6258a495946df12
  -- @return {bool}
 ---
-function get_git_status()
-    -- local file = io.popen("git status --no-lock-index --porcelain 2>nul")
-    -- option no-lock-index is deprecated
+local function get_git_status()
+    local status = {
+        anyChanges = false,
+        indexAdded = 0,
+        indexModified = 0,
+        indexDeleted = 0,
+        filesAdded = 0,
+        filesModified = 0,
+        filesDeleted = 0
+    }
     local file = io.popen("git --no-optional-locks status --porcelain 2>nul")
     for line in file:lines() do
-        file:close()
-        return false
-    end
-    file:close()
+        if line:match("^A(.+)$") then status.indexAdded = status.indexAdded + 1 end
+        if line:match("^M(.+)$") then status.indexModified = status.indexModified + 1 end
+        if line:match("^R(.+)$") then status.indexModified = status.indexModified + 1 end
+        if line:match("^C(.+)$") then status.indexModified = status.indexModified + 1 end
+        if line:match("^D(.+)$") then status.indexDeleted = status.indexDeleted + 1 end
 
-    return true
+        if line:match("^%?(.+)$") then status.filesAdded = status.filesAdded + 1 end
+        if line:match("^ A(.+)$") then status.filesAdded = status.filesAdded + 1 end
+        if line:match("^ M(.+)$") then status.filesModified = status.filesModified + 1 end
+        if line:match("^ R(.+)$") then status.filesModified = status.filesModified + 1 end
+        if line:match("^ C(.+)$") then status.filesModified = status.filesModified + 1 end
+        if line:match("^ D(.+)$") then status.filesDeleted = status.filesDeleted + 1 end
+
+        status.anyChanges = true
+    end
+
+    file:close()
+    return status
 end
 
 -- adopted from clink.lua
@@ -147,8 +185,8 @@ function honukai_git_prompt_filter()
 
     -- Symbol for git status
     local states = {
-        clean = "\x1b[32m●",
-        dirty = "\x1b[31m✖︎",
+        clean = " \x1b[32m●",
+        dirty = " \x1b[31m✖︎",
     }
 
     local git_dir = get_git_dir()
@@ -157,13 +195,17 @@ function honukai_git_prompt_filter()
         local branch = get_git_branch(git_dir)
         if branch then
             -- Has branch => therefore it is a git folder, now figure out status
-            if get_git_status() then
-                status = states.clean
+            local status = get_git_status()
+
+            if status.anyChanges then
+                symbol = states.dirty
+                changes = string.format("\x1b[37m +%d ~%d -%d", status.filesAdded, status.filesModified, status.filesDeleted)
             else
-                status = states.dirty
+                symbol = states.clean
+                changes = ""
             end
 
-            clink.prompt.value = string.gsub(clink.prompt.value, "{git}", "\x1b[37m on git:".."\x1b[34m"..branch.." "..status)
+            clink.prompt.value = string.gsub(clink.prompt.value, "{git}", "\x1b[37m on git:".."\x1b[34m"..branch..symbol..changes)
             return false
         end
     end
@@ -192,6 +234,6 @@ function honukai_venv_prompt_filter()
 end
 
 -- override the built-in filters
-clink.prompt.register_filter(honukai_prompt_filter, 55)
-clink.prompt.register_filter(honukai_git_prompt_filter, 60)
-clink.prompt.register_filter(honukai_venv_prompt_filter, 60)
+clink.prompt.register_filter(honukai_prompt_filter, 70)
+clink.prompt.register_filter(honukai_git_prompt_filter, 75)
+clink.prompt.register_filter(honukai_venv_prompt_filter, 75)

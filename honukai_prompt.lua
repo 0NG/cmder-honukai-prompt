@@ -1,4 +1,4 @@
--- Honukai style prompt, base on: https://github.com/AmrEldib/cmder-powerline-prompt 
+-- Honukai style prompt, source: https://github.com/0NG/cmder-honukai-prompt 
 
  -- user name
 local username = ""
